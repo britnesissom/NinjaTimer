@@ -1,0 +1,9 @@
+eclipse.preferences.version=1
+environment/project/com.ti.ccstudio.buildDefinitions.TMS470.Default.462533338/TEMP/delimiter=;
+environment/project/com.ti.ccstudio.buildDefinitions.TMS470.Default.462533338/TEMP/operation=replace
+environment/project/com.ti.ccstudio.buildDefinitions.TMS470.Default.462533338/TEMP/value=C\:\\temp
+environment/project/com.ti.ccstudio.buildDefinitions.TMS470.Default.462533338/TMP/delimiter=;
+environment/project/com.ti.ccstudio.buildDefinitions.TMS470.Default.462533338/TMP/operation=replace
+environment/project/com.ti.ccstudio.buildDefinitions.TMS470.Default.462533338/TMP/value=C\:\\temp
+environment/project/com.ti.ccstudio.buildDefinitions.TMS470.Default.462533338/append=true
+environment/project/com.ti.ccstudio.buildDefinitions.TMS470.Default.462533338/appendContributed=true
