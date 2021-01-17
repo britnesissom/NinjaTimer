@@ -58,11 +58,10 @@
 #include <ti/display/Display.h>
 
 #include <icall.h>
+#include <NinjaTimer.h>
 #include "hal_assert.h"
 #include "bcomdef.h"
 #include "peripheral.h"
-#include "NinjaTimer_ProjectZero.h"
-
 #include <ti/drivers/GPIO.h>
 #include <ti/drivers/SPI.h>
 #include <ti/drivers/UART.h>
@@ -168,7 +167,7 @@ int main()
   /* Kick off profile - Priority 3 */
   GAPRole_createTask();
 
-  NinjaTimerPZ_createTask();
+  NinjaTimer_createTask();
 
   /* enable interrupts and start SYS/BIOS */
   BIOS_start();

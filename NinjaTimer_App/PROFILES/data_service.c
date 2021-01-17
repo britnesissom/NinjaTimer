@@ -87,19 +87,11 @@ CONST uint8_t ds_StringUUID[ATT_UUID_SIZE] =
   DS_STRING_UUID_BASE128(DS_STRING_UUID)
 };
 
-// Stream UUID
-CONST uint8_t ds_StreamUUID[ATT_UUID_SIZE] =
-{
-  DS_STREAM_UUID_BASE128(DS_STREAM_UUID)
-};
-
-
 /*********************************************************************
  * LOCAL VARIABLES
  */
 
 static DataServiceCBs_t *pAppCBs = NULL;
-static uint8_t ds_icall_rsp_task_id = INVALID_TASK_ID;
 
 /*********************************************************************
 * Profile Attributes - variables
@@ -117,21 +109,8 @@ static uint8_t ds_StringVal[DS_STRING_LEN] = {0};
 // Length of data in characteristic "String" Value variable, initialized to minimal size.
 static uint16_t ds_StringValLen = DS_STRING_LEN_MIN;
 
-
-
-// Characteristic "Stream" Properties (for declaration)
-static uint8_t ds_StreamProps = GATT_PROP_NOTIFY | GATT_PROP_WRITE_NO_RSP;
-
-// Characteristic "Stream" Value variable
-static uint8_t ds_StreamVal[DS_STREAM_LEN] = {0};
-
-// Length of data in characteristic "Stream" Value variable, initialized to minimal size.
-static uint16_t ds_StreamValLen = DS_STREAM_LEN_MIN;
-
-// Characteristic "Stream" Client Characteristic Configuration Descriptor
-static gattCharCfg_t *ds_StreamConfig;
-
-
+// mobile app data service description
+static uint8_t ds_desc[] = "Mobile App Data Service";
 
 /*********************************************************************
 * Profile Attributes - Table
@@ -160,26 +139,12 @@ static gattAttribute_t Data_ServiceAttrTbl[] =
         0,
         ds_StringVal
       },
-    // Stream Characteristic Declaration
-    {
-      { ATT_BT_UUID_SIZE, characterUUID },
-      GATT_PERMIT_READ,
-      0,
-      &ds_StreamProps
-    },
-      // Stream Characteristic Value
+      // mobile app data service description
       {
-        { ATT_UUID_SIZE, ds_StreamUUID },
-        GATT_PERMIT_WRITE,
+        { ATT_BT_UUID_SIZE, charUserDescUUID },
+        GATT_PERMIT_READ,
         0,
-        ds_StreamVal
-      },
-      // Stream CCCD
-      {
-        { ATT_BT_UUID_SIZE, clientCharCfgUUID },
-        GATT_PERMIT_READ | GATT_PERMIT_WRITE,
-        0,
-        (uint8_t *)&ds_StreamConfig
+        ds_desc
       },
 };
 
@@ -218,22 +183,12 @@ extern bStatus_t DataService_AddService( uint8_t rspTaskId )
 {
   uint8_t status;
 
-  // Allocate Client Characteristic Configuration table
-  ds_StreamConfig = (gattCharCfg_t *)ICall_malloc( sizeof(gattCharCfg_t) * linkDBNumConns );
-  if ( ds_StreamConfig == NULL )
-  {
-    return ( bleMemAllocError );
-  }
-
-  // Initialize Client Characteristic Configuration attributes
-  GATTServApp_InitCharCfg( INVALID_CONNHANDLE, ds_StreamConfig );
   // Register GATT attribute list and CBs with GATT Server App
   status = GATTServApp_RegisterService( Data_ServiceAttrTbl,
                                         GATT_NUM_ATTRS( Data_ServiceAttrTbl ),
                                         GATT_MAX_ENCRYPT_KEY_SIZE,
                                         &Data_ServiceCBs );
   Log_info1("Registered service, %d attributes", (IArg)GATT_NUM_ATTRS( Data_ServiceAttrTbl ));
-  ds_icall_rsp_task_id = rspTaskId;
 
   return ( status );
 }
@@ -276,9 +231,6 @@ bStatus_t DataService_SetParameter( uint8_t param, uint16_t len, void *value )
   uint16_t *pValLen;
   uint16_t valMinLen;
   uint16_t valMaxLen;
-  uint8_t sendNotiInd = FALSE;
-  gattCharCfg_t *attrConfig;
-  uint8_t needAuth;
 
   switch ( param )
   {
@@ -288,17 +240,6 @@ bStatus_t DataService_SetParameter( uint8_t param, uint16_t len, void *value )
       valMinLen =  DS_STRING_LEN_MIN;
       valMaxLen =  DS_STRING_LEN;
       Log_info2("SetParameter : %s len: %d", (IArg)"String", (IArg)len);
-      break;
-
-    case DS_STREAM_ID:
-      pAttrVal  =  ds_StreamVal;
-      pValLen   = &ds_StreamValLen;
-      valMinLen =  DS_STREAM_LEN_MIN;
-      valMaxLen =  DS_STREAM_LEN;
-      sendNotiInd = TRUE;
-      attrConfig  = ds_StreamConfig;
-      needAuth    = FALSE; // Change if authenticated link is required for sending.
-      Log_info2("SetParameter : %s len: %d", (IArg)"Stream", (IArg)len);
       break;
 
     default:
@@ -311,19 +252,6 @@ bStatus_t DataService_SetParameter( uint8_t param, uint16_t len, void *value )
   {
     memcpy(pAttrVal, value, len);
     *pValLen = len; // Update length for read and get.
-
-    if (sendNotiInd)
-    {
-      Log_info2("Trying to send noti/ind: connHandle %x, %s",
-                (IArg)attrConfig[0].connHandle,
-                (IArg)((attrConfig[0].value==0)?"\x1b[33mNoti/ind disabled\x1b[0m" :
-                       (attrConfig[0].value==1)?"Notification enabled" :
-                                                "Indication enabled"));
-      // Try to send notification.
-      GATTServApp_ProcessCharCfg( attrConfig, pAttrVal, needAuth,
-                                  Data_ServiceAttrTbl, GATT_NUM_ATTRS( Data_ServiceAttrTbl ),
-                                  ds_icall_rsp_task_id,  Data_Service_ReadAttrCB);
-    }
   }
   else
   {
@@ -357,12 +285,6 @@ bStatus_t DataService_GetParameter( uint8_t param, uint16_t *len, void *value )
       Log_info2("GetParameter : %s returning %d bytes", (IArg)"String", (IArg)*len);
       break;
 
-    case DS_STREAM_ID:
-      *len = MIN(*len, ds_StreamValLen);
-      memcpy(value, ds_StreamVal, *len);
-      Log_info2("GetParameter : %s returning %d bytes", (IArg)"Stream", (IArg)*len);
-      break;
-
     default:
       Log_error1("GetParameter: Parameter #%d not valid.", (IArg)param);
       ret = INVALIDPARAMETER;
@@ -393,10 +315,6 @@ static uint8_t Data_Service_findCharParamId(gattAttribute_t *pAttr)
   // Is this attribute in "String"?
   else if ( ATT_UUID_SIZE == pAttr->type.len && !memcmp(pAttr->type.uuid, ds_StringUUID, pAttr->type.len))
     return DS_STRING_ID;
-
-  // Is this attribute in "Stream"?
-  else if ( ATT_UUID_SIZE == pAttr->type.len && !memcmp(pAttr->type.uuid, ds_StreamUUID, pAttr->type.len))
-    return DS_STREAM_ID;
 
   else
     return 0xFF; // Not found. Return invalid.
@@ -438,17 +356,6 @@ static bStatus_t Data_Service_ReadAttrCB( uint16_t connHandle, gattAttribute_t *
                  (IArg)offset,
                  (IArg)method);
       /* Other considerations for String can be inserted here */
-      break;
-
-    case DS_STREAM_ID:
-      valueLen = ds_StreamValLen;
-
-      Log_info4("ReadAttrCB : %s connHandle: %d offset: %d method: 0x%02x",
-                 (IArg)"Stream",
-                 (IArg)connHandle,
-                 (IArg)offset,
-                 (IArg)method);
-      /* Other considerations for Stream can be inserted here */
       break;
 
     default:
@@ -530,20 +437,6 @@ static bStatus_t Data_Service_WriteAttrCB( uint16_t connHandle, gattAttribute_t 
                  (IArg)offset,
                  (IArg)method);
       /* Other considerations for String can be inserted here */
-      break;
-
-    case DS_STREAM_ID:
-      writeLenMin  = DS_STREAM_LEN_MIN;
-      writeLenMax  = DS_STREAM_LEN;
-      pValueLenVar = &ds_StreamValLen;
-
-      Log_info5("WriteAttrCB : %s connHandle(%d) len(%d) offset(%d) method(0x%02x)",
-                 (IArg)"Stream",
-                 (IArg)connHandle,
-                 (IArg)len,
-                 (IArg)offset,
-                 (IArg)method);
-      /* Other considerations for Stream can be inserted here */
       break;
 
     default:

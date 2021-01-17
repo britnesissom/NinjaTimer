@@ -37,6 +37,8 @@
 							<tool id="com.ti.ccstudio.buildDefinitions.TMS470_18.12.exe.compilerDebug.225065103" name="ARM Compiler" superClass="com.ti.ccstudio.buildDefinitions.TMS470_18.12.exe.compilerDebug">
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.ti.ccstudio.buildDefinitions.TMS470_18.12.compilerID.INCLUDE_PATH.1436368108" name="Add dir to #include search path (--include_path, -I)" superClass="com.ti.ccstudio.buildDefinitions.TMS470_18.12.compilerID.INCLUDE_PATH" valueType="includePath">
 									<listOptionValue builtIn="false" value="${COM_TI_SIMPLELINK_CC2640R2_SDK_INCLUDE_PATH}"/>
+									<listOptionValue builtIn="false" value="${COM_TI_SIMPLELINK_CC2640R2_SDK_INSTALL_DIR}/source/ti/blestack/profiles/simple_profile"/>
+									<listOptionValue builtIn="false" value="${COM_TI_SIMPLELINK_CC2640R2_SDK_INSTALL_DIR}/source/ti/blestack/profiles/simple_profile/cc26xx"/>
 									<listOptionValue builtIn="false" value="${COM_TI_SIMPLELINK_CC2640R2_SDK_INSTALL_DIR}/kernel/tirtos/packages/ti/sysbios/posix"/>
 									<listOptionValue builtIn="false" value="${PROJECT_ROOT}"/>
 									<listOptionValue builtIn="false" value="${EXAMPLE_BLE_ROOT}/src/extra/"/>
@@ -53,8 +55,6 @@
 									<listOptionValue builtIn="false" value="${SRC_BLE_DIR}/profiles/dev_info"/>
 									<listOptionValue builtIn="false" value="${SRC_BLE_DIR}/profiles/roles/cc26xx"/>
 									<listOptionValue builtIn="false" value="${SRC_BLE_DIR}/profiles/roles"/>
-									<listOptionValue builtIn="false" value="${SRC_BLE_DIR}/profiles/simple_profile/cc26xx"/>
-									<listOptionValue builtIn="false" value="${SRC_BLE_DIR}/profiles/simple_profile"/>
 									<listOptionValue builtIn="false" value="${SRC_BLE_DIR}/target"/>
 									<listOptionValue builtIn="false" value="${SRC_BLE_DIR}/hal/src/target/_common"/>
 									<listOptionValue builtIn="false" value="${SRC_BLE_DIR}/hal/src/target/_common/cc26xx"/>

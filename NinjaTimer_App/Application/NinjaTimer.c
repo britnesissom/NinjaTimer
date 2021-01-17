@@ -69,7 +69,7 @@
 #include <osal_snv.h>
 #include <peripheral.h>
 #include <devinfoservice.h>
-#include <NinjaTimer_ProjectZero.h>
+#include <NinjaTimer.h>
 #include <util_rgb_led.h>
 
 #include "util.h"
@@ -97,26 +97,26 @@
 #define TIMER_PERIOD                          100
 
 // Task configuration
-#define PRZ_TASK_PRIORITY                     1
+#define NT_TASK_PRIORITY                     1
 
-#ifndef PRZ_TASK_STACK_SIZE
-#define PRZ_TASK_STACK_SIZE                   800
+#ifndef NT_TASK_STACK_SIZE
+#define NT_TASK_STACK_SIZE                   800
 #endif
 
 // Internal Events for RTOS application
-#define PRZ_ICALL_EVT                         ICALL_MSG_EVENT_ID  // Event_Id_31
-#define PRZ_QUEUE_EVT                         UTIL_QUEUE_EVENT_ID // Event_Id_30
-#define PRZ_STATE_CHANGE_EVT                  Event_Id_00
-#define PRZ_CHAR_CHANGE_EVT                   Event_Id_01
-#define PRZ_PERIODIC_EVT                      Event_Id_02
-#define PRZ_APP_MSG_EVT                       Event_Id_03
+#define NT_ICALL_EVT                         ICALL_MSG_EVENT_ID  // Event_Id_31
+#define NT_QUEUE_EVT                         UTIL_QUEUE_EVENT_ID // Event_Id_30
+#define NT_STATE_CHANGE_EVT                  Event_Id_00
+#define NT_CHAR_CHANGE_EVT                   Event_Id_01
+#define NT_PERIODIC_EVT                      Event_Id_02
+#define NT_APP_MSG_EVT                       Event_Id_03
 
-#define PRZ_ALL_EVENTS                       (PRZ_ICALL_EVT        | \
-                                              PRZ_QUEUE_EVT        | \
-                                              PRZ_STATE_CHANGE_EVT | \
-                                              PRZ_CHAR_CHANGE_EVT  | \
-                                              PRZ_PERIODIC_EVT     | \
-                                              PRZ_APP_MSG_EVT)
+#define NT_ALL_EVENTS                       (NT_ICALL_EVT        | \
+                                             NT_QUEUE_EVT        | \
+                                             NT_STATE_CHANGE_EVT | \
+                                             NT_CHAR_CHANGE_EVT  | \
+                                             NT_PERIODIC_EVT     | \
+                                             NT_APP_MSG_EVT)
 
 // Set the register cause to the registration bit-mask
 #define CONNECTION_EVENT_REGISTER_BIT_SET(registerCause) (connectionEventRegisterCauseBitMap |= registerCause )
@@ -143,7 +143,7 @@ typedef enum
   APP_MSG_GAP_STATE_CHANGE,    /* The GAP / connection state has changed      */
   APP_MSG_BUTTON_DEBOUNCED,    /* A button has been debounced with new value  */
   APP_MSG_SEND_PASSCODE,       /* A pass-code/PIN is requested during pairing */
-  APP_MSG_PRZ_CONN_EVT,        /* Connection Event finished report            */
+  APP_MSG_NT_CONN_EVT,        /* Connection Event finished report            */
 } app_msg_types_t;
 
 // Struct for messages sent to the application task
@@ -195,8 +195,8 @@ static Queue_Struct applicationMsgQ;
 static Queue_Handle hApplicationMsgQ;
 
 // Task configuration
-Task_Struct przTask;
-Char przTaskStack[PRZ_TASK_STACK_SIZE];
+Task_Struct ntTask;
+Char ntTaskStack[NT_TASK_STACK_SIZE];
 
 
 // GAP - SCAN RSP data (max size = 31 bytes)
@@ -275,19 +275,19 @@ Display_Handle displayHandle;
  * LOCAL FUNCTIONS
  */
 
-static void NinjaTimerPZ_init( void );
-static void NinjaTimerPZ_taskFxn(UArg a0, UArg a1);
+static void NinjaTimer_init( void );
+static void NinjaTimer_taskFxn(UArg a0, UArg a1);
 
 static void user_processApplicationMessage(app_msg_t *pMsg);
-static uint8_t NinjaTimerPZ_processStackMsg(ICall_Hdr *pMsg);
-static uint8_t NinjaTimerPZ_processGATTMsg(gattMsgEvent_t *pMsg);
+static uint8_t NinjaTimer_processStackMsg(ICall_Hdr *pMsg);
+static uint8_t NinjaTimer_processGATTMsg(gattMsgEvent_t *pMsg);
 
-static void NinjaTimerPZ_sendAttRsp(void);
-static uint8_t NinjaTimerPZ_processGATTMsg(gattMsgEvent_t *pMsg);
-static void NinjaTimerPZ_freeAttRsp(uint8_t status);
+static void NinjaTimer_sendAttRsp(void);
+static uint8_t NinjaTimer_processGATTMsg(gattMsgEvent_t *pMsg);
+static void NinjaTimer_freeAttRsp(uint8_t status);
 
-static void NinjaTimerPZ_connEvtCB(Gap_ConnEventRpt_t *pReport);
-static void NinjaTimerPZ_processConnEvt(Gap_ConnEventRpt_t *pReport);
+static void NinjaTimer_connEvtCB(Gap_ConnEventRpt_t *pReport);
+static void NinjaTimer_processConnEvt(Gap_ConnEventRpt_t *pReport);
 
 static void user_processGapStateChangeEvt(gaprole_States_t newState);
 static void user_gapStateChangeCB(gaprole_States_t newState);
@@ -384,14 +384,14 @@ uint32_t connectionEventRegisterCauseBitMap = NONE_REGISTERED; // See connection
  *
  * @return @ref SUCCESS
  */
-bStatus_t NinjaTimerPZ_RegistertToAllConnectionEvent(connectionEventRegisterCause_u connectionEventRegisterCause)
+bStatus_t NinjaTimer_RegistertToAllConnectionEvent(connectionEventRegisterCause_u connectionEventRegisterCause)
 {
   bStatus_t status = SUCCESS;
 
   // In case  there is no registration for the connection event, register for report
   if (!CONNECTION_EVENT_IS_REGISTERED)
   {
-    status = GAP_RegisterConnEventCb(NinjaTimerPZ_connEvtCB, GAP_CB_REGISTER, LINKDB_CONNHANDLE_ALL);
+    status = GAP_RegisterConnEventCb(NinjaTimer_connEvtCB, GAP_CB_REGISTER, LINKDB_CONNHANDLE_ALL);
   }
   
   if(status == SUCCESS)
@@ -411,7 +411,7 @@ bStatus_t NinjaTimerPZ_RegistertToAllConnectionEvent(connectionEventRegisterCaus
  * @return @ref SUCCESS
  *
  */
-bStatus_t NinjaTimerPZ_UnRegistertToAllConnectionEvent (connectionEventRegisterCause_u connectionEventRegisterCause)
+bStatus_t NinjaTimer_UnRegistertToAllConnectionEvent (connectionEventRegisterCause_u connectionEventRegisterCause)
 {
   bStatus_t status = SUCCESS;
 
@@ -420,7 +420,7 @@ bStatus_t NinjaTimerPZ_UnRegistertToAllConnectionEvent (connectionEventRegisterC
   // In case there are no more subscribers for the connection event then unregister for report
   if (!CONNECTION_EVENT_IS_REGISTERED)
   {
-    GAP_RegisterConnEventCb(NinjaTimerPZ_connEvtCB, GAP_CB_UNREGISTER, LINKDB_CONNHANDLE_ALL);
+    GAP_RegisterConnEventCb(NinjaTimer_connEvtCB, GAP_CB_UNREGISTER, LINKDB_CONNHANDLE_ALL);
   }
 
   return(status);
@@ -437,17 +437,17 @@ bStatus_t NinjaTimerPZ_UnRegistertToAllConnectionEvent (connectionEventRegisterC
  *
  * @return  None.
  */
-void NinjaTimerPZ_createTask(void)
+void NinjaTimer_createTask(void)
 {
   Task_Params taskParams;
 
   // Configure task
   Task_Params_init(&taskParams);
-  taskParams.stack = przTaskStack;
-  taskParams.stackSize = PRZ_TASK_STACK_SIZE;
-  taskParams.priority = PRZ_TASK_PRIORITY;
+  taskParams.stack = ntTaskStack;
+  taskParams.stackSize = NT_TASK_STACK_SIZE;
+  taskParams.priority = NT_TASK_PRIORITY;
 
-  Task_construct(&przTask, NinjaTimerPZ_taskFxn, &taskParams, NULL);
+  Task_construct(&ntTask, NinjaTimer_taskFxn, &taskParams, NULL);
 }
 
 /*
@@ -459,7 +459,7 @@ void NinjaTimerPZ_createTask(void)
  *
  * @return  None.
  */
-static void NinjaTimerPZ_init(void)
+static void NinjaTimer_init(void)
 {
   // ******************************************************************
   // NO STACK API CALLS CAN OCCUR BEFORE THIS CALL TO ICall_registerApp
@@ -516,7 +516,7 @@ static void NinjaTimerPZ_init(void)
                   50 * (1000/Clock_tickPeriod),
                   &clockParams);
 
-  clockParams.arg = PRZ_PERIODIC_EVT;
+  clockParams.arg = NT_PERIODIC_EVT;
   clockParams.startFlag = false;
   clockParams.period = TIMER_PERIOD * (1000/Clock_tickPeriod);
 
@@ -613,7 +613,6 @@ static void NinjaTimerPZ_init(void)
 
   // Initalization of characteristics in Data_Service that can provide data.
   DataService_SetParameter(DS_STRING_ID, sizeof(initString), initString);
-  DataService_SetParameter(DS_STREAM_ID, DS_STREAM_LEN, initVal);
 
   // Start the stack in Peripheral mode.
   VOID GAPRole_StartDevice(&user_gapRoleCBs);
@@ -663,10 +662,10 @@ static void NinjaTimer_clockPerformTask(void) {
  *
  * @return  None.
  */
-static void NinjaTimerPZ_taskFxn(UArg a0, UArg a1)
+static void NinjaTimer_taskFxn(UArg a0, UArg a1)
 {
   // Initialize application
-  NinjaTimerPZ_init();
+  NinjaTimer_init();
 
   // Application main loop
   for (;;)
@@ -676,7 +675,7 @@ static void NinjaTimerPZ_taskFxn(UArg a0, UArg a1)
     // Waits for an event to be posted associated with the calling thread.
     // Note that an event associated with a thread is posted when a
     // message is queued to the message receive queue of the thread
-    events = Event_pend(syncEvent, Event_Id_NONE, PRZ_ALL_EVENTS,
+    events = Event_pend(syncEvent, Event_Id_NONE, NT_ALL_EVENTS,
                         ICALL_TIMEOUT_FOREVER);
 
     if (events)
@@ -698,7 +697,7 @@ static void NinjaTimerPZ_taskFxn(UArg a0, UArg a1)
           if (pEvt->signature != 0xffff)
           {
             // Process inter-task message
-            safeToDealloc = NinjaTimerPZ_processStackMsg((ICall_Hdr *)pMsg);
+            safeToDealloc = NinjaTimer_processStackMsg((ICall_Hdr *)pMsg);
           }
         }
 
@@ -721,7 +720,7 @@ static void NinjaTimerPZ_taskFxn(UArg a0, UArg a1)
         ICall_free(pMsg);
       }
 
-      if (events & PRZ_PERIODIC_EVT) {
+      if (events & NT_PERIODIC_EVT) {
 
 //          Log_info0("clockperformtask\n");
          // Perform periodic application task
@@ -824,9 +823,9 @@ static void user_processApplicationMessage(app_msg_t *pMsg)
       }
       break;
 
-    case APP_MSG_PRZ_CONN_EVT:
+    case APP_MSG_NT_CONN_EVT:
     {
-        NinjaTimerPZ_processConnEvt((Gap_ConnEventRpt_t *)pMsg->pdu);
+        NinjaTimer_processConnEvt((Gap_ConnEventRpt_t *)pMsg->pdu);
         break;
     }
   }
@@ -945,14 +944,10 @@ static void user_handleButtonPress(button_state_t *pState)
   if (pState->state) {
       // clock isn't started so start timer
       if (!Clock_isActive(periodicClock)) {
-          Log_info0("clock started\n");
           Clock_start(periodicClock);
-          // start(&timer);
       } else {
           // clock already running so stop timer
-          Log_info0("clock stopped\n");
           Clock_stop(periodicClock);
-          // reset(&timer);
       }
   }
 
@@ -1058,15 +1053,6 @@ void user_DataService_ValueChangeHandler(char_data_t *pCharData)
                 (IArg)received_string);
       break;
 
-    case DS_STREAM_ID:
-      Log_info3("Value Change msg: Data Service Stream: %02x:%02x:%02x...",
-                (IArg)pCharData->data[0],
-                (IArg)pCharData->data[1],
-                (IArg)pCharData->data[2]);
-      // -------------------------
-      // Do something useful with pCharData->data here
-      break;
-
   default:
     return;
   }
@@ -1102,19 +1088,6 @@ void user_DataService_CfgChangeHandler(char_data_t *pCharData)
     break;
   }
 #endif
-  switch (pCharData->paramID)
-  {
-    case DS_STREAM_ID:
-      Log_info3("CCCD Change msg: %s %s: %s",
-                (IArg)"Data Service",
-                (IArg)"Stream",
-                (IArg)configValString);
-      // -------------------------
-      // Do something useful with configValue here. It tells you whether someone
-      // wants to know the state of this characteristic.
-      // ...
-      break;
-  }
 }
 
 
@@ -1129,7 +1102,7 @@ void user_DataService_CfgChangeHandler(char_data_t *pCharData)
  *
  * @return  TRUE if safe to deallocate incoming message, FALSE otherwise.
  */
-static uint8_t NinjaTimerPZ_processStackMsg(ICall_Hdr *pMsg)
+static uint8_t NinjaTimer_processStackMsg(ICall_Hdr *pMsg)
 {
   uint8_t safeToDealloc = TRUE;
 
@@ -1137,7 +1110,7 @@ static uint8_t NinjaTimerPZ_processStackMsg(ICall_Hdr *pMsg)
   {
     case GATT_MSG_EVENT:
       // Process GATT message
-      safeToDealloc = NinjaTimerPZ_processGATTMsg((gattMsgEvent_t *)pMsg);
+      safeToDealloc = NinjaTimer_processGATTMsg((gattMsgEvent_t *)pMsg);
       break;
 
     case HCI_GAP_EVENT_EVENT:
@@ -1170,7 +1143,7 @@ static uint8_t NinjaTimerPZ_processStackMsg(ICall_Hdr *pMsg)
  *
  * @return  TRUE if safe to deallocate incoming message, FALSE otherwise.
  */
-static uint8_t NinjaTimerPZ_processGATTMsg(gattMsgEvent_t *pMsg)
+static uint8_t NinjaTimer_processGATTMsg(gattMsgEvent_t *pMsg)
 {
   // See if GATT server was unable to transmit an ATT response
   if (pMsg->hdr.status == blePending)
@@ -1180,10 +1153,10 @@ static uint8_t NinjaTimerPZ_processGATTMsg(gattMsgEvent_t *pMsg)
 
     // No HCI buffer was available. Let's try to retransmit the response
     // on the next connection event.
-    if(NinjaTimerPZ_RegistertToAllConnectionEvent(FOR_ATT_RSP) == SUCCESS)
+    if(NinjaTimer_RegistertToAllConnectionEvent(FOR_ATT_RSP) == SUCCESS)
     {
       // First free any pending response
-      NinjaTimerPZ_freeAttRsp(FAILURE);
+      NinjaTimer_freeAttRsp(FAILURE);
 
       // Hold on to the response message for retransmission
       pAttRsp = pMsg;
@@ -1221,13 +1194,13 @@ static uint8_t NinjaTimerPZ_processGATTMsg(gattMsgEvent_t *pMsg)
 }
 
 /*********************************************************************
- * @fn      NinjaTimerPZ_processConnEvt
+ * @fn      NinjaTimer_processConnEvt
  *
  * @brief   Process connection event.
  *
  * @param pReport pointer to connection event report
  */
-static void NinjaTimerPZ_processConnEvt(Gap_ConnEventRpt_t *pReport)
+static void NinjaTimer_processConnEvt(Gap_ConnEventRpt_t *pReport)
 {
 
   if( CONNECTION_EVENT_REGISTRATION_CAUSE(FOR_ATT_RSP))
@@ -1237,7 +1210,7 @@ static void NinjaTimerPZ_processConnEvt(Gap_ConnEventRpt_t *pReport)
     // connection event, let's try sending any remaining ATT Responses
     // on the next connection event.
     // Try to retransmit pending ATT Response (if any)
-    NinjaTimerPZ_sendAttRsp();
+    NinjaTimer_sendAttRsp();
   }
 
 }
@@ -1259,7 +1232,7 @@ static void NinjaTimerPZ_processConnEvt(Gap_ConnEventRpt_t *pReport)
  *
  * @return  none
  */
-static void NinjaTimerPZ_sendAttRsp(void)
+static void NinjaTimer_sendAttRsp(void)
 {
   // See if there's a pending ATT Response to be transmitted
   if (pAttRsp != NULL)
@@ -1275,10 +1248,10 @@ static void NinjaTimerPZ_sendAttRsp(void)
     if ((status != blePending) && (status != MSG_BUFFER_NOT_AVAIL))
     {
       // Disable connection event end notice
-      NinjaTimerPZ_UnRegistertToAllConnectionEvent (FOR_ATT_RSP);
+      NinjaTimer_UnRegistertToAllConnectionEvent (FOR_ATT_RSP);
 
       // We're done with the response message
-      NinjaTimerPZ_freeAttRsp(status);
+      NinjaTimer_freeAttRsp(status);
     }
     else
     {
@@ -1296,7 +1269,7 @@ static void NinjaTimerPZ_sendAttRsp(void)
  *
  * @return  none
  */
-static void NinjaTimerPZ_freeAttRsp(uint8_t status)
+static void NinjaTimer_freeAttRsp(uint8_t status)
 {
   // See if there's a pending ATT response message
   if (pAttRsp != NULL)
@@ -1338,16 +1311,16 @@ static void NinjaTimerPZ_freeAttRsp(uint8_t status)
  *****************************************************************************/
 
 /*********************************************************************
- * @fn      NinjaTimerPZ_connEvtCB
+ * @fn      NinjaTimer_connEvtCB
  *
  * @brief   Connection event callback.
  *
  * @param pReport pointer to connection event report
  */
-static void NinjaTimerPZ_connEvtCB(Gap_ConnEventRpt_t *pReport)
+static void NinjaTimer_connEvtCB(Gap_ConnEventRpt_t *pReport)
 {
   // Enqueue the event for processing in the app context.
-  user_enqueueRawAppMsg(APP_MSG_PRZ_CONN_EVT, (uint8_t *)pReport, sizeof(pReport));
+  user_enqueueRawAppMsg(APP_MSG_NT_CONN_EVT, (uint8_t *)pReport, sizeof(pReport));
   ICall_free(pReport);
 }
 
@@ -1602,7 +1575,7 @@ static void user_enqueueCharDataMsg( app_msg_types_t appMsgType,
     // Enqueue the message using pointer to queue node element.
     Queue_enqueue(hApplicationMsgQ, &pMsg->_elem);
   // Let application know there's a message.
-  Event_post(syncEvent, PRZ_APP_MSG_EVT);
+  Event_post(syncEvent, NT_APP_MSG_EVT);
   }
 }
 
@@ -1631,7 +1604,7 @@ static void user_enqueueRawAppMsg(app_msg_types_t appMsgType, uint8_t *pData,
     // Enqueue the message using pointer to queue node element.
     Queue_enqueue(hApplicationMsgQ, &pMsg->_elem);
 //    // Let application know there's a message.
-    Event_post(syncEvent, PRZ_APP_MSG_EVT);
+    Event_post(syncEvent, NT_APP_MSG_EVT);
   }
 }
 

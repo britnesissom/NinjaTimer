@@ -1,8 +1,8 @@
 /******************************************************************************
 
- @file  project_zero.h
+ @file  NinjaTimer.h
 
- @brief This file contains the Project Zero sample application
+ @brief This file contains the Ninja Timer application
         definitions and prototypes.
  Group: CMCU, LPRF
  Target Device: cc2640r2
@@ -43,8 +43,8 @@
  
  
  *****************************************************************************/
-#ifndef PROJECTZERO_H
-#define PROJECTZERO_H
+#ifndef NINJATIMER_H
+#define NINJATIMER_H
 
 #ifdef __cplusplus
 extern "C"
@@ -78,7 +78,7 @@ extern "C"
 /*
  * Task creation function for the Simple BLE Peripheral.
  */
-extern void NinjaTimerPZ_createTask(void);
+extern void NinjaTimer_createTask(void);
 
 // Generic callback handlers for value changes in services.
 extern void user_service_ValueChangeCB(uint16_t connHandle, uint16_t svcUuid, uint8_t paramID, uint8_t *pValue, uint16_t len);
@@ -92,4 +92,4 @@ extern void user_service_ValueChangeCB(uint16_t connHandle, uint16_t svcUuid, ui
 }
 #endif
 
-#endif /* PROJECTZERO_H */
+#endif /* NINJATIMER_H */

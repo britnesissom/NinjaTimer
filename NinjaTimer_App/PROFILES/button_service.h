@@ -66,7 +66,7 @@ extern "C"
     0x00, 0x00, 0xB0, 0x00, 0x40, 0x51, 0x04, LO_UINT16(uuid), HI_UINT16(uuid), \
     0x00, 0xF0
 
-// BUTTON0 Characteristic defines
+// Physical reset button characteristic defines
 #define BS_BUTTON0_ID                 0
 #define BS_BUTTON0_UUID               0x1121
 #define BS_BUTTON0_UUID_BASE128(uuid) 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, \
