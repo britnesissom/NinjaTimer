@@ -52,9 +52,7 @@
 //#define xdc_runtime_Log_DISABLE_ALL 1  // Add to disable logs from this file
 
 #include <ti/sysbios/knl/Task.h>
-#include <ti/sysbios/knl/Event.h>
-#include <ti/sysbios/knl/Queue.h>
-#include <ti/sysbios/knl/Clock.h>
+#include <ti/sysbios/hal/Seconds.h>
 
 #include <ti/drivers/PIN.h>
 #include <ti/display/Display.h>
@@ -73,7 +71,6 @@
 #include <util_rgb_led.h>
 
 #include "util.h"
-
 #include "Board.h"
 #include "button_service.h"
 #include "data_service.h"
@@ -89,9 +86,6 @@
 // Limited discoverable mode advertises for 30.72s, and then stops
 // General discoverable mode advertises indefinitely
 #define DEFAULT_DISCOVERABLE_MODE             GAP_ADTYPE_FLAGS_GENERAL
-
-// Default pass-code used for pairing.
-#define DEFAULT_PASSCODE                      000000
 
 // timer period in ms
 #define TIMER_PERIOD                          100
@@ -163,15 +157,6 @@ typedef struct
   uint8_t  data[];  // Flexible array member, extended to malloc - sizeof(.)
 } char_data_t;
 
-// Struct for message about sending/requesting passcode from peer.
-typedef struct
-{
-  uint16_t connHandle;
-  uint8_t  uiInputs;
-  uint8_t  uiOutputs;
-  uint32   numComparison;
-} passcode_req_t;
-
 // Struct for message about button state
 typedef struct
 {
@@ -214,15 +199,17 @@ static uint8_t advertData[] =
   // mode (advertises for 30 seconds at a time) or general
   // discoverable mode (advertises indefinitely), depending
   // on the DEFAULT_DISCOVERY_MODE define.
-  0x02,   // length of this data
+  0x02,   // length of this data - 2 bytes
   GAP_ADTYPE_FLAGS,
   DEFAULT_DISCOVERABLE_MODE | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
 
   // complete name
-  12,
-  GAP_ADTYPE_LOCAL_NAME_COMPLETE,
-  'N','i','n','j','a',' ','T','i','m','e','r',
-
+//  12,
+//  GAP_ADTYPE_LOCAL_NAME_COMPLETE,
+//  'N','i','n','j','a',' ','T','i','m','e','r',
+  0x11, // 17 bytes
+  GAP_ADTYPE_128BIT_MORE,      // some of the UUID's, but not all
+  DATA_SERVICE_SERV_UUID_BASE128(DATA_SERVICE_SERV_UUID)       // data service UUID
 };
 
 // GAP GATT Attributes
@@ -235,20 +222,9 @@ static uint8_t rspTxRetry = 0;
 
 /* Pin driver handles */
 static PIN_Handle resetButtonPinHandle;
-static PIN_Handle ledPinHandle;
 
 /* Global memory storage for a PIN_Config table */
 static PIN_State resetButtonPinState;
-static PIN_State ledPinState;
-
-/*
- * Initial LED pin configuration table
- *   - LEDs Board_LED0 & Board_LED1 are off.
- */
-PIN_Config ledPinTable[] = {
-  Board_RLED | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
-  PIN_TERMINATE
-};
 
 /*
  * Application button pin configuration table:
@@ -265,8 +241,16 @@ static Clock_Struct button0DebounceClock;
 // Clock instances for internal periodic events.
 static Clock_Handle periodicClock;
 
+// keep track of clock time for stop then start
+unsigned long currentTime = 0;
+unsigned long startTime = 0;
+unsigned long stopTime = 0;
+
 // State of the buttons
 static uint8_t button0State = 0;
+
+// competitor's score for LEDs to display
+static uint8_t score = 0;
 
 // Global display handle
 Display_Handle displayHandle;
@@ -291,8 +275,6 @@ static void NinjaTimer_processConnEvt(Gap_ConnEventRpt_t *pReport);
 
 static void user_processGapStateChangeEvt(gaprole_States_t newState);
 static void user_gapStateChangeCB(gaprole_States_t newState);
-static void user_gapBondMgr_passcodeCB(uint8_t *deviceAddr, uint16_t connHandle,
-                                       uint8_t uiInputs, uint8_t uiOutputs, uint32_t numComparison);
 static void user_gapBondMgr_pairStateCB(uint16_t connHandle, uint8_t state,
                                         uint8_t status);
 
@@ -301,6 +283,7 @@ static void user_handleButtonPress(button_state_t *pState);
 
 static void NinjaTimer_clockPerformTask(void);
 static void NinjaTimer_timerClockHandler(UArg arg);
+static void createClockIfNull(void);
 
 // Generic callback handler for value changes in services.
 static void user_service_CfgChangeCB( uint16_t connHandle, uint16_t svcUuid, uint8_t paramID, uint8_t *pValue, uint16_t len );
@@ -341,7 +324,6 @@ static gapRolesCBs_t user_gapRoleCBs =
 // GAP Bond Manager Callbacks
 static gapBondCBs_t user_bondMgrCBs =
 {
-  user_gapBondMgr_passcodeCB, // Passcode callback
   user_gapBondMgr_pairStateCB // Pairing / Bonding state Callback
 };
 
@@ -482,13 +464,6 @@ static void NinjaTimer_init(void)
   // Hardware initialization
   // ******************************************************************
 
-  // Open LED pins
-  ledPinHandle = PIN_open(&ledPinState, ledPinTable);
-  if(!ledPinHandle) {
-    Log_error0("Error initializing board LED pins");
-    Task_exit();
-  }
-
   // open reset button pin
   resetButtonPinHandle = PIN_open(&resetButtonPinState, buttonPinTable);
   if(!resetButtonPinHandle) {
@@ -520,11 +495,8 @@ static void NinjaTimer_init(void)
   clockParams.startFlag = false;
   clockParams.period = TIMER_PERIOD * (1000/Clock_tickPeriod);
 
-  // Create one-shot clocks for internal periodic events.
+  // Create periodic clock for displaying timer LEDs
   periodicClock = Clock_create(NinjaTimer_timerClockHandler, 10, &clockParams, NULL);
-
-  //init(&timer, 1);
-
 
   // ******************************************************************
   // BLE Stack initialization
@@ -535,7 +507,7 @@ static void NinjaTimer_init(void)
 
   // By setting this to zero, the device will go into the waiting state after
   // being discoverable. Otherwise wait this long [ms] before advertising again.
-  uint16_t advertOffTime = 0; // miliseconds
+  uint16_t advertOffTime = 0; // milliseconds
 
   // Set advertisement enabled.
   GAPRole_SetParameter(GAPROLE_ADVERT_ENABLED, sizeof(uint8_t),
@@ -551,9 +523,6 @@ static void NinjaTimer_init(void)
   // Initialize Advertisement data
   GAPRole_SetParameter(GAPROLE_ADVERT_DATA, sizeof(advertData), advertData);
 
-  Log_info1("Name in advertData array: \x1b[33m%s\x1b[0m",
-            (IArg)Util_getLocalNameStr(advertData));
-
   // Set advertising interval
   uint16_t advInt = DEFAULT_ADVERTISING_INTERVAL;
 
@@ -568,14 +537,11 @@ static void NinjaTimer_init(void)
   // ******************************************************************
   // BLE Bond Manager initialization
   // ******************************************************************
-  uint32_t passkey = 0; // passkey "000000"
   uint8_t pairMode = GAPBOND_PAIRING_MODE_WAIT_FOR_REQ;
   uint8_t mitm = TRUE;
   uint8_t ioCap = GAPBOND_IO_CAP_DISPLAY_ONLY;
   uint8_t bonding = TRUE;
 
-  GAPBondMgr_SetParameter(GAPBOND_DEFAULT_PASSCODE, sizeof(uint32_t),
-                          &passkey);
   GAPBondMgr_SetParameter(GAPBOND_PAIRING_MODE, sizeof(uint8_t), &pairMode);
   GAPBondMgr_SetParameter(GAPBOND_MITM_PROTECTION, sizeof(uint8_t), &mitm);
   GAPBondMgr_SetParameter(GAPBOND_IO_CAPABILITIES, sizeof(uint8_t), &ioCap);
@@ -636,12 +602,15 @@ static void NinjaTimer_clockPerformTask(void) {
     int digit4 = ((time / 1000) % 60) % 10;
     int digit5 = (time / 100) % 10;
 
-//    Log_info1("time in ms: %d\n", time);
+/*    Seconds_Time tm;
+    Seconds_getTime(&tm);
+    Log_info2("s: %d, ns: %d", tm.secs, tm.nsecs);*/
+
     Log_info5("%d%d:%d%d.%d\n", digit1, digit2, digit3, digit4, digit5);
 
 //    RGBLED_UpdateTimeDigits(digit1, digit2, digit3, digit4, digit5);
 
-    RGBLED_Update();
+//    RGBLED_Update();
 }
 
 
@@ -710,7 +679,6 @@ static void NinjaTimer_taskFxn(UArg a0, UArg a1)
       // Process messages sent from another task or another context.
       while (!Queue_empty(hApplicationMsgQ))
       {
-//          Log_info0("process app msg\n");
         app_msg_t *pMsg = Queue_dequeue(hApplicationMsgQ);
 
         // Process application-layer message probably sent from ourselves.
@@ -721,13 +689,9 @@ static void NinjaTimer_taskFxn(UArg a0, UArg a1)
       }
 
       if (events & NT_PERIODIC_EVT) {
-
-//          Log_info0("clockperformtask\n");
          // Perform periodic application task
          NinjaTimer_clockPerformTask();
       }
-
-//      HomeAutomationRGBLED_processEvent();
     }
   }
 }
@@ -743,7 +707,6 @@ static void NinjaTimer_taskFxn(UArg a0, UArg a1)
  */
 static void NinjaTimer_timerClockHandler(UArg arg)
 {
-//    Log_info0("inside timer handler\n");
   // Wake up the application.
   Event_post(syncEvent, arg);
 }
@@ -766,9 +729,6 @@ static void NinjaTimer_timerClockHandler(UArg arg)
 static void user_processApplicationMessage(app_msg_t *pMsg)
 {
   char_data_t *pCharData = (char_data_t *)pMsg->pdu;
-
-  Log_info1("pMsg type: %d", pMsg->type);
-  Log_info1("service uuid: 0x%02x", pCharData->svcUUID);
 
   switch (pMsg->type)
   {
@@ -803,17 +763,6 @@ static void user_processApplicationMessage(app_msg_t *pMsg)
 
     case APP_MSG_GAP_STATE_CHANGE: /* Message that GAP state changed  */
       user_processGapStateChangeEvt( *(gaprole_States_t *)pMsg->pdu );
-      break;
-
-    case APP_MSG_SEND_PASSCODE: /* Message about pairing PIN request */
-      {
-        passcode_req_t *pReq = (passcode_req_t *)pMsg->pdu;
-        Log_info2("BondMgr Requested passcode. We are %s passcode %06d",
-                  (IArg)(pReq->uiInputs?"Sending":"Displaying"),
-                  DEFAULT_PASSCODE);
-        // Send passcode response.
-        GAPBondMgr_PasscodeRsp(pReq->connHandle, SUCCESS, DEFAULT_PASSCODE);
-      }
       break;
 
     case APP_MSG_BUTTON_DEBOUNCED: /* Message from swi about pin change */
@@ -944,10 +893,12 @@ static void user_handleButtonPress(button_state_t *pState)
   if (pState->state) {
       // clock isn't started so start timer
       if (!Clock_isActive(periodicClock)) {
+//          createClockIfNull();
           Clock_start(periodicClock);
       } else {
           // clock already running so stop timer
           Clock_stop(periodicClock);
+//          Clock_delete(&periodicClock);
       }
   }
 
@@ -1022,17 +973,8 @@ void user_ButtonService_CfgChangeHandler(char_data_t *pCharData)
  *
  * @return  None.
  */
-uint32_t val = 0;
 void user_DataService_ValueChangeHandler(char_data_t *pCharData)
 {
-
-    // Set the output value equal to the received value. 0 is off, not 0 is on
-    val = (val == 0) ? 1 : 0;
-    PIN_setOutputValue(ledPinHandle, Board_RLED, (val == 0) ? 1 : 0);
-    Log_info2("Turning %s %s",
-              (IArg)"\x1b[31mLED0\x1b[0m",
-              (IArg)(pCharData->data[0]?"on":"off"));
-
   // Value to hold the received string for printing via Log, as Log printouts
   // happen in the Idle task, and so need to refer to a global/static variable.
   static uint8_t received_string[DS_STRING_LEN] = {0};
@@ -1051,11 +993,45 @@ void user_DataService_ValueChangeHandler(char_data_t *pCharData)
                 (IArg)"Data Service",
                 (IArg)"String",
                 (IArg)received_string);
+
+      if (strcmp((char *)received_string, "s") == 0) {   // start timer
+//          createClockIfNull();
+          Clock_start(periodicClock);
+      }
+      else if (strcmp((char *)received_string, "p") == 0) {    // stop timer
+          Clock_stop(periodicClock);
+      }
+      else if (strcmp((char *)received_string, "r") == 0) {    // reset timer
+          score = 0;
+          RGBLED_UpdateScoreDigits(0, 0);
+//          Clock_delete(&periodicClock);
+      }
+      else if (strcmp((char *)received_string, "c") == 0) {    // add 1 to score
+          score++;
+          Log_info1("score: %d", score);
+          RGBLED_UpdateScoreDigits(score / 10, score % 10);
+      }
+
       break;
 
   default:
     return;
   }
+}
+
+// creates clock if it hasn't already been created or was previously deleted
+static void createClockIfNull(void) {
+    if(!Util_clockIsCreated(&periodicClock)) {
+        Clock_Params clockParams;
+        Clock_Params_init(&clockParams);
+
+        clockParams.arg = NT_PERIODIC_EVT;
+        clockParams.startFlag = false;
+        clockParams.period = TIMER_PERIOD * (1000/Clock_tickPeriod);
+
+        // Create periodic clock for timer LEDs to update every 100ms
+        periodicClock = Clock_create(NinjaTimer_timerClockHandler, 10, &clockParams, NULL);
+    }
 }
 
 /*
@@ -1087,6 +1063,11 @@ void user_DataService_CfgChangeHandler(char_data_t *pCharData)
     configValString = "Indications enabled";
     break;
   }
+
+  Log_info3("config Change msg: %s %s: %s",
+                  (IArg)"Data Service",
+                  (IArg)"String",
+                  (IArg)configValString);
 #endif
 }
 
@@ -1338,32 +1319,6 @@ static void user_gapStateChangeCB(gaprole_States_t newState)
 }
 
 /*
- * @brief   Passcode callback.
- *
- * @param   connHandle - connection handle
- * @param   uiInputs   - input passcode?
- * @param   uiOutputs  - display passcode?
- * @param   numComparison - numeric comparison value
- *
- * @return  none
- */
-static void user_gapBondMgr_passcodeCB(uint8_t *deviceAddr, uint16_t connHandle,
-                                       uint8_t uiInputs, uint8_t uiOutputs, uint32_t numComparison)
-{
-  passcode_req_t req =
-  {
-    .connHandle = connHandle,
-    .uiInputs = uiInputs,
-    .uiOutputs = uiOutputs,
-    .numComparison = numComparison
-  };
-
-  // Defer handling of the passcode request to the application, in case
-  // user input is required, and because a BLE API must be used from Task.
-  user_enqueueRawAppMsg(APP_MSG_SEND_PASSCODE, (uint8_t *)&req, sizeof(req));
-}
-
-/*
  * @brief   Pairing state callback.
  *
  * @param   connHandle - connection handle
@@ -1500,8 +1455,8 @@ static void buttonDebounceSwiFxn(UArg buttonId)
  */
 static void buttonCallbackFxn(PIN_Handle handle, PIN_Id pinId)
 {
-  Log_info1("Button interrupt: %s",
-            (IArg)("Button 0"));
+/*  Log_info1("Button interrupt: %s",
+            (IArg)("Button 0"));*/
 
   // Disable interrupt on that pin for now. Re-enabled after debounce.
   PIN_setConfig(handle, PIN_BM_IRQ, pinId | PIN_IRQ_DIS);

@@ -126,19 +126,6 @@ void RGBLED_processCharChangeEvt(uint8_t event)
 }
 
 /*********************************************************************
- * @fn      RGBLED_processEvent
- *
- * @brief   RGB LED event processor.
- *
- * @param   none
- *
- * @return  none
- */
-void RGBLED_processEvent(void)
-{
-}
-
-/*********************************************************************
  * @fn      RGBLED_reset
  *
  * @brief   Reset RGB LED
@@ -229,8 +216,21 @@ void RGBLED_UpdateTimeDigits(uint8_t digit1, uint8_t digit2, uint8_t digit3, uin
 }
 
 void RGBLED_UpdateScoreDigits(uint8_t digit1, uint8_t digit2) {
-    RGBLED_UpdateDigits((35 * LED_IN_SEG), digit1, 5, false);
-    RGBLED_UpdateDigits((35 * LED_IN_SEG) + (7 * LED_IN_SCORE), digit2, 5, false);
+//    RGBLED_UpdateDigits((35 * LED_IN_SEG), digit1, 5, false);
+//    RGBLED_UpdateDigits((35 * LED_IN_SEG) + (7 * LED_IN_SCORE), digit2, 5, false);
+
+    if (digit2 == 0) {
+        for (uint8_t i = 0; i < Board_WS2812_NUM_LEDS; i++) {
+            WS2812_setLEDcolor(i, 0, 0, 0, WS2812_NOREFRESH);
+        }
+    }
+
+    // testing with launchpad
+    if (digit2 > 0 && digit2 <= Board_WS2812_NUM_LEDS) {
+        WS2812_setLEDcolor(digit2 - 1, BLUE.r, BLUE.g, BLUE.b, WS2812_NOREFRESH);
+    }
+
+    WS2812_refreshLEDs();
 }
 
 /*********************************************************************

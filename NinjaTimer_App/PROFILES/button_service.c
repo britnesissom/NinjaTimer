@@ -258,7 +258,7 @@ bStatus_t ButtonService_SetParameter( uint8_t param, uint16_t len, void *value )
       sendNotiInd = TRUE;
       attrConfig  = bs_BUTTON0Config;
       needAuth    = FALSE; // Change if authenticated link is required for sending.
-      Log_info2("SetParameter : %s len: %d", (IArg)"BUTTON0", (IArg)len);
+     // Log_info2("SetParameter : %s len: %d", (IArg)"BUTTON0", (IArg)len);
       break;
 
     default:
@@ -274,11 +274,11 @@ bStatus_t ButtonService_SetParameter( uint8_t param, uint16_t len, void *value )
 
     if (sendNotiInd)
     {
-      Log_info2("Trying to send noti/ind: connHandle %x, %s",
+      /*Log_info2("Trying to send noti/ind: connHandle %x, %s",
                 (IArg)attrConfig[0].connHandle,
                 (IArg)((attrConfig[0].value==0)?"\x1b[33mNoti/ind disabled\x1b[0m" :
                        (attrConfig[0].value==1)?"Notification enabled" :
-                                                "Indication enabled"));
+                                                "Indication enabled"));*/
       // Try to send notification.
       GATTServApp_ProcessCharCfg( attrConfig, pAttrVal, needAuth,
                                   Button_ServiceAttrTbl, GATT_NUM_ATTRS( Button_ServiceAttrTbl ),
@@ -427,11 +427,11 @@ static bStatus_t Button_Service_WriteAttrCB( uint16_t connHandle, gattAttribute_
   // See if request is regarding a Client Characterisic Configuration
   if (ATT_BT_UUID_SIZE == pAttr->type.len && GATT_CLIENT_CHAR_CFG_UUID == *(uint16_t *)pAttr->type.uuid)
   {
-    Log_info3("WriteAttrCB (CCCD): param: %d connHandle: %d %s",
+   /* Log_info3("WriteAttrCB (CCCD): param: %d connHandle: %d %s",
               (IArg)Button_Service_findCharParamId(pAttr),
               (IArg)connHandle,
               (IArg)(method == GATT_LOCAL_WRITE?"- restoring bonded state":"- OTA write"));
-
+*/
     // Allow notification and indication, but do not check if really allowed per CCCD.
     status = GATTServApp_ProcessCCCWriteReq( connHandle, pAttr, pValue, len,
                                              offset, GATT_CLIENT_CFG_NOTIFY |

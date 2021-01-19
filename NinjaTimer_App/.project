@@ -180,7 +180,7 @@
 		<link>
 			<name>Startup/UartLog.c</name>
 			<type>1</type>
-			<locationURI>EXAMPLE_BLE_ROOT/src/extra/uartlog/UartLog.c</locationURI>
+			<location>C:/ti/simplelink_cc2640r2_sdk_4_30_00_08/examples/rtos/CC2640R2_LAUNCHXL/blestack/project_zero/src/extra/uartlog/UartLog.c</location>
 		</link>
 		<link>
 			<name>Startup/ccfg_app_ble_rcosc.c</name>

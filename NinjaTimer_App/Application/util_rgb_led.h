@@ -21,9 +21,6 @@ typedef struct color {
     uint8_t b;
 } color;
 
-extern const color BLUE;
-extern const color ORANGE;
-
 #define SERVICE_ID_RGBLED    0x1140
 
 /*********************************************************************
@@ -44,11 +41,6 @@ extern void RGBLED_init(void);
  * Task Event Processor for characteristic changes
  */
 void RGBLED_processCharChangeEvt(uint8_t paramID);
-
-/*
- * Task Event Processor for RGB LED module
- */
-extern void RGBLED_processEvent(void);
 
 /*
  * Reset RGB LED module
