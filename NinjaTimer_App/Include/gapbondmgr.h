@@ -577,7 +577,6 @@ typedef void (*pfnPairStateCB_t)
  */
 typedef struct
 {
-  pfnPasscodeCB_t     passcodeCB;       //!< Passcode callback
   pfnPairStateCB_t    pairStateCB;      //!< Pairing state callback
 } gapBondCBs_t;
 

@@ -20,10 +20,10 @@
  * MACROS
  */
 
-#define LED_IN_SEG 4
-#define LED_IN_SCORE 3
-#define NUM_LEDS (5 * (7 * LED_IN_SEG) + 3)
-#define NUM_SCORE_LEDS (2 * (7 * LED_IN_SCORE))
+#define LED_IN_TIME_SEG 4
+#define LED_IN_SCORE_SEG 3
+#define NUM_TIME_LEDS (5 * (7 * LED_IN_TIME_SEG) + 3)
+#define NUM_SCORE_LEDS (2 * (7 * LED_IN_SCORE_SEG))
 
 /*********************************************************************
  * TYPEDEFS
@@ -34,9 +34,9 @@
  */
 // Events
 #define RGB_LED_COLOR_CHANGED_EVT            (1 << 0)
+#define BLUE                                 { 150, 0, 218 }    // GRB
+#define ORANGE                               { 73, 232, 0 }     // GRB
 
-const color BLUE = { 150, 0, 218 };
-const color ORANGE = { 73, 232, 0 };
 const color BLACK = { 0, 0, 0 };
 
 /*********************************************************************
@@ -57,6 +57,9 @@ extern void user_service_ValueChangeCB( uint16_t connHandle, uint16_t svcUuid, u
 /*********************************************************************
  * LOCAL VARIABLES
  */
+
+static color timeColor = ORANGE;
+static color scoreColor = BLUE;
 
 
 /*********************************************************************
@@ -83,8 +86,6 @@ static void RGBLED_StateChangeCB(uint16_t connHandle, uint16_t svcUuid, uint8_t 
  */
 void RGBLED_init(void)
 {
-  uint16_t i;
-
   // Add RGB LED service
   RGBLED_AddService();
   RGBLED_Setup(RGBLED_StateChangeCB);
@@ -93,12 +94,7 @@ void RGBLED_init(void)
   WS2812_init(Board_WS2812_SPI);
 #endif
 
-  // Turn off all LEDs
-  for (i = 0; i < Board_RGB_NUM_LEDS; i++)
-    RGBLED_SetLedColor(i, 0, 0, 0);
-  RGBLED_Update();
-
-  // Initialize the module state variables
+  // reset LEDs to black
   RGBLED_reset();
 }
 
@@ -114,14 +110,9 @@ void RGBLED_processCharChangeEvt(uint8_t event)
 {
   if (event == RGB_LED_COLOR_CHANGED_EVT)
   {
-    uint8_t i; // colors[3 * Board_RGB_NUM_LEDS];
-
     RGBLED_GetParameter(RGB_LED_PARAM_COLOR, &LEDs);
     /* Set LED colors */
-    for (i = 0; i < Board_RGB_NUM_LEDS; i++)
-      RGBLED_SetLedColor(i, 0, 0, 0);
-    /* Update */
-    RGBLED_Update();
+    RGBLED_reset();
   }
 }
 
@@ -136,13 +127,12 @@ void RGBLED_processCharChangeEvt(uint8_t event)
  */
 void RGBLED_reset(void)
 {
-  uint16_t i;
-
   // Set all LEDs to internal state
-  for (i = 0; i < Board_RGB_NUM_LEDS; i++)
-    RGBLED_SetLedColor(i, 0, 0, 0);
+  for (uint8_t i = 0; i < Board_WS2812_NUM_LEDS; i++) {
+      WS2812_setLEDcolor(i, 0, 0, 0, WS2812_NOREFRESH);
+  }
 
-  RGBLED_Update();
+  WS2812_refreshLEDs();
 }
 
 /*********************************************************************
@@ -173,11 +163,17 @@ static void RGBLED_StateChangeCB(uint16_t connHandle, uint16_t svcUuid,
  *
  * @return  None.
  */
-void RGBLED_SetLedColor(uint16_t index, uint8_t r, uint8_t g, uint8_t b)
+void RGBLED_SetLedColor(uint8_t r, uint8_t g, uint8_t b, bool isTime)
 {
-  LEDs[index].r = r;
-  LEDs[index].g = g;
-  LEDs[index].b = b;
+    uint16_t index = isTime ? 0 : NUM_TIME_LEDS;
+    uint16_t end = isTime ? NUM_TIME_LEDS : NUM_SCORE_LEDS;
+
+    for (uint16_t i = index; i < end; i++) {
+        LEDs[i].r = r;
+        LEDs[i].g = g;
+        LEDs[i].b = b;
+    }
+
 }
 
 /*********************************************************************
@@ -195,7 +191,7 @@ void RGBLED_Update(void)
   uint32_t sleep = 500 * (1000 / Clock_tickPeriod);
 
   for (; i - handled < Board_WS2812_NUM_LEDS; i++) {
-      WS2812_setLEDcolor(i - handled, BLUE.r, BLUE.g, BLUE.b, WS2812_REFRESH);
+      WS2812_setLEDcolor(i - handled, timeColor.r, timeColor.g, timeColor.b, WS2812_REFRESH);
       Task_sleep(sleep);
       WS2812_setLEDcolor(i - handled, 0, 0, 0, WS2812_REFRESH);
       Task_sleep(sleep);
@@ -208,16 +204,30 @@ void RGBLED_Update(void)
 }
 
 void RGBLED_UpdateTimeDigits(uint8_t digit1, uint8_t digit2, uint8_t digit3, uint8_t digit4, uint8_t digit5) {
+/*
     RGBLED_UpdateDigits(0, digit1, 0, true); // min 1
     RGBLED_UpdateDigits(7 * LED_IN_SEG, digit2, 0, true); // min 2
     RGBLED_UpdateDigits((14 * LED_IN_SEG), digit3, 2, true); // sec 1
     RGBLED_UpdateDigits((21 * LED_IN_SEG), digit4, 2, true); // sec 2
-    RGBLED_UpdateDigits((28 * LED_IN_SEG), digit5, 3, true); // 1/10 sec
+    RGBLED_UpdateDigits((28 * LED_IN_TIME_SEG), digit5, 3, true); // 1/10 sec
+*/
+    if (digit4 == 0) {
+        for (uint8_t i = 0; i < Board_WS2812_NUM_LEDS; i++) {
+            WS2812_setLEDcolor(i, 0, 0, 0, WS2812_NOREFRESH);
+        }
+    }
+
+    // testing with launchpad
+    if (digit4 > 0 && digit4 <= Board_WS2812_NUM_LEDS) {
+        WS2812_setLEDcolor(digit4 - 1, timeColor.r, timeColor.g, timeColor.b, WS2812_NOREFRESH);
+    }
+
+    WS2812_refreshLEDs();
 }
 
 void RGBLED_UpdateScoreDigits(uint8_t digit1, uint8_t digit2) {
 //    RGBLED_UpdateDigits((35 * LED_IN_SEG), digit1, 5, false);
-//    RGBLED_UpdateDigits((35 * LED_IN_SEG) + (7 * LED_IN_SCORE), digit2, 5, false);
+//    RGBLED_UpdateDigits((35 * LED_IN_TIME_SEG) + (7 * LED_IN_SCORE_SEG), digit2, 5, false);
 
     if (digit2 == 0) {
         for (uint8_t i = 0; i < Board_WS2812_NUM_LEDS; i++) {
@@ -227,7 +237,7 @@ void RGBLED_UpdateScoreDigits(uint8_t digit1, uint8_t digit2) {
 
     // testing with launchpad
     if (digit2 > 0 && digit2 <= Board_WS2812_NUM_LEDS) {
-        WS2812_setLEDcolor(digit2 - 1, BLUE.r, BLUE.g, BLUE.b, WS2812_NOREFRESH);
+        WS2812_setLEDcolor(digit2 - 1, timeColor.r, timeColor.g, timeColor.b, WS2812_NOREFRESH);
     }
 
     WS2812_refreshLEDs();
@@ -273,9 +283,9 @@ void RGBLED_UpdateDigits(int startIndex, uint8_t number, uint8_t dp, bool isTime
       0b01101111, // 9
     };
 
-    uint16_t leds_in_seg = (!isTime) ? LED_IN_SCORE : LED_IN_SEG;
+    uint16_t leds_in_seg = (!isTime) ? LED_IN_SCORE_SEG : LED_IN_TIME_SEG;
     // color for score and time, respectively
-    color scoreTimeColor = (!isTime) ? BLUE : ORANGE;
+    color scoreTimeColor = (!isTime) ? scoreColor : timeColor;
 
     // set color via RGB
     uint16_t index;
@@ -288,9 +298,9 @@ void RGBLED_UpdateDigits(int startIndex, uint8_t number, uint8_t dp, bool isTime
       }
     }
 
-    WS2812_setLEDcolor(14 * LED_IN_SEG, ORANGE.r, ORANGE.g, ORANGE.b, WS2812_NOREFRESH);    // first dot after two digits
-    WS2812_setLEDcolor((14 * LED_IN_SEG) + 1, ORANGE.r, ORANGE.g, ORANGE.b, WS2812_NOREFRESH);  // second dot after two digits
-    WS2812_setLEDcolor((14 * LED_IN_SEG) + 2, ORANGE.r, ORANGE.g, ORANGE.b, WS2812_NOREFRESH);  // seconds dot after 4 digits/2 dots
+    WS2812_setLEDcolor(14 * LED_IN_TIME_SEG, timeColor.r, timeColor.g, timeColor.b, WS2812_NOREFRESH);    // first dot after two digits
+    WS2812_setLEDcolor((14 * LED_IN_TIME_SEG) + 1, timeColor.r, timeColor.g, timeColor.b, WS2812_NOREFRESH);  // second dot after two digits
+    WS2812_setLEDcolor((14 * LED_IN_TIME_SEG) + 2, timeColor.r, timeColor.g, timeColor.b, WS2812_NOREFRESH);  // seconds dot after 4 digits/2 dots
 
     WS2812_refreshLEDs();
 #endif

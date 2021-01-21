@@ -52,7 +52,6 @@
 //#define xdc_runtime_Log_DISABLE_ALL 1  // Add to disable logs from this file
 
 #include <ti/sysbios/knl/Task.h>
-#include <ti/sysbios/hal/Seconds.h>
 
 #include <ti/drivers/PIN.h>
 #include <ti/display/Display.h>
@@ -203,10 +202,10 @@ static uint8_t advertData[] =
   GAP_ADTYPE_FLAGS,
   DEFAULT_DISCOVERABLE_MODE | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
 
-  // complete name
-//  12,
-//  GAP_ADTYPE_LOCAL_NAME_COMPLETE,
-//  'N','i','n','j','a',' ','T','i','m','e','r',
+  // shortened name - full is Ninja Timer
+  6,
+  GAP_ADTYPE_LOCAL_NAME_SHORT,
+  'T','i','m','e','r',
   0x11, // 17 bytes
   GAP_ADTYPE_128BIT_MORE,      // some of the UUID's, but not all
   DATA_SERVICE_SERV_UUID_BASE128(DATA_SERVICE_SERV_UUID)       // data service UUID
@@ -303,9 +302,6 @@ static void user_enqueueCharDataMsg(app_msg_types_t appMsgType, uint16_t connHan
                                     uint8_t *pValue, uint16_t len);
 static void buttonCallbackFxn(PIN_Handle handle, PIN_Id pinId);
 
-#if defined(UARTLOG_ENABLE)
-static char *Util_getLocalNameStr(const uint8_t *data);
-#endif
 /*********************************************************************
  * EXTERN FUNCTIONS
  */
@@ -602,15 +598,9 @@ static void NinjaTimer_clockPerformTask(void) {
     int digit4 = ((time / 1000) % 60) % 10;
     int digit5 = (time / 100) % 10;
 
-/*    Seconds_Time tm;
-    Seconds_getTime(&tm);
-    Log_info2("s: %d, ns: %d", tm.secs, tm.nsecs);*/
-
     Log_info5("%d%d:%d%d.%d\n", digit1, digit2, digit3, digit4, digit5);
 
-//    RGBLED_UpdateTimeDigits(digit1, digit2, digit3, digit4, digit5);
-
-//    RGBLED_Update();
+    RGBLED_UpdateTimeDigits(digit1, digit2, digit3, digit4, digit5);
 }
 
 
@@ -1010,6 +1000,27 @@ void user_DataService_ValueChangeHandler(char_data_t *pCharData)
           score++;
           Log_info1("score: %d", score);
           RGBLED_UpdateScoreDigits(score / 10, score % 10);
+      }
+      else if (strstr((char *)received_string, "rgb") != NULL) {    // change led colors
+          char *token;
+          char *savePtr;
+          char *rgb[5];
+          uint8_t i = 0;
+
+          // RGB msg layout: rgb,<t or s>,r,g,b
+          /* get the first token which should be rgb */
+          token = strtok_r((char *)received_string, ",", &savePtr);
+
+          /* walk through other tokens */
+          while(token != NULL) {
+            rgb[i] = token;
+            i++;
+
+            token = strtok_r(NULL, ",", &savePtr);
+          }
+
+          bool isTime = strcmp(rgb[1], "t") == 0 ? true : false;
+          RGBLED_SetLedColor(atoi(rgb[2]), atoi(rgb[3]), atoi(rgb[4]), isTime);
       }
 
       break;
@@ -1585,38 +1596,6 @@ static void user_updateCharVal(char_data_t *pCharData)
 
   }
 }
-
-#if defined(UARTLOG_ENABLE)
-/*
- * @brief   Extract the LOCALNAME from Scan/AdvData
- *
- * @param   data - Pointer to the advertisement or scan response data
- *
- * @return  Pointer to null-terminated string with the adv local name.
- */
-static char *Util_getLocalNameStr(const uint8_t *data) {
-  uint8_t nuggetLen = 0;
-  uint8_t nuggetType = 0;
-  uint8_t advIdx = 0;
-
-  static char localNameStr[32] = { 0 };
-  memset(localNameStr, 0, sizeof(localNameStr));
-
-  for (advIdx = 0; advIdx < 32;) {
-    nuggetLen = data[advIdx++];
-    nuggetType = data[advIdx];
-    if ( (nuggetType == GAP_ADTYPE_LOCAL_NAME_COMPLETE ||
-          nuggetType == GAP_ADTYPE_LOCAL_NAME_SHORT) && nuggetLen < 31) {
-      memcpy(localNameStr, &data[advIdx + 1], nuggetLen - 1);
-      break;
-    } else {
-      advIdx += nuggetLen;
-    }
-  }
-
-  return localNameStr;
-}
-#endif
 
 /*********************************************************************
 *********************************************************************/

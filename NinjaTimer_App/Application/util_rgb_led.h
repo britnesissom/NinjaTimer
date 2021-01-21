@@ -50,12 +50,12 @@ extern void RGBLED_reset(void);
 /*
  * Set specific LED color
  */
-extern void RGBLED_SetLedColor(uint16_t index, uint8_t r, uint8_t g, uint8_t b);
+extern void RGBLED_SetLedColor(uint8_t r, uint8_t g, uint8_t b, bool isTime);
 
 /*
  * Update LED colors
  */
-extern void RGBLED_Update(void);
+void RGBLED_Update(void);
 
 extern void RGBLED_UpdateTimeDigits(uint8_t digit1, uint8_t digit2, uint8_t digit3, uint8_t digit4, uint8_t digit5);
 
