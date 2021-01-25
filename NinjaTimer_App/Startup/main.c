@@ -56,16 +56,19 @@
 #include <ti/sysbios/BIOS.h>
 #include <ti/sysbios/knl/Clock.h>
 #include <ti/display/Display.h>
-
-#include <icall.h>
-#include <NinjaTimer.h>
-#include "hal_assert.h"
-#include "bcomdef.h"
-#include "peripheral.h"
 #include <ti/drivers/GPIO.h>
 #include <ti/drivers/SPI.h>
 #include <ti/drivers/UART.h>
 #include <uartlog/UartLog.h>
+#include <icall.h>
+#include <NinjaTimer.h>
+
+#include "osal_snv.h"
+#include "hal_assert.h"
+#include "bcomdef.h"
+#include "peripheral.h"
+#include "util_rgb_led.h"
+
 
 
 #ifndef USE_DEFAULT_USER_CFG
@@ -161,11 +164,20 @@ int main()
   /* Initialize ICall module */
   ICall_init();
 
+  uint8_t status = osal_snv_init();
+
+  if (status != SUCCESS) {
+      Log_error0("snv init failed");
+  }
+
   /* Start tasks of external images - Priority 5 */
   ICall_createRemoteTasks();
 
   /* Kick off profile - Priority 3 */
   GAPRole_createTask();
+
+  /* retrieve LED colors from snv */
+//  RGBLED_createTask();
 
   NinjaTimer_createTask();
 

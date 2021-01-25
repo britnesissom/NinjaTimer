@@ -3,14 +3,13 @@
  */
 #include <uartlog/UartLog.h>
 #include <ti/sysbios/knl/Task.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "osal_snv.h"
-#include "gatt.h"
-#include "gattservapp.h"
+#include "util.h"
 #include "util_rgb_led.h"
 #include "Board.h"
-#include "peripheral.h"
-#include "util.h"
 #include "rgbledservice.h"
 #include "ws2812.h"
 
@@ -20,10 +19,16 @@
  * MACROS
  */
 
-#define LED_IN_TIME_SEG 4
-#define LED_IN_SCORE_SEG 3
-#define NUM_TIME_LEDS (5 * (7 * LED_IN_TIME_SEG) + 3)
-#define NUM_SCORE_LEDS (2 * (7 * LED_IN_SCORE_SEG))
+#define SNV_TIME_COLOR_ID       0x80
+#define SNV_SCORE_COLOR_ID      0x81
+#define SNV_BUF_LEN             12      // buf - rrr,ggg,bbb
+
+#define TASK_STACK_SIZE         512
+
+#define LED_IN_TIME_SEG         4
+#define LED_IN_SCORE_SEG        3
+#define NUM_TIME_LEDS           (5 * (7 * LED_IN_TIME_SEG) + 3)
+#define NUM_SCORE_LEDS          (2 * (7 * LED_IN_SCORE_SEG))
 
 /*********************************************************************
  * TYPEDEFS
@@ -32,7 +37,6 @@
 /*********************************************************************
  * CONSTANTS
  */
-// Events
 #define RGB_LED_COLOR_CHANGED_EVT            (1 << 0)
 #define BLUE                                 { 150, 0, 218 }    // GRB
 #define ORANGE                               { 73, 232, 0 }     // GRB
@@ -43,6 +47,11 @@ const color BLACK = { 0, 0, 0 };
  * GLOBAL VARIABLES
  */
 color LEDs[Board_RGB_NUM_LEDS];
+char buf[SNV_BUF_LEN];
+
+// Task configuration
+Task_Struct ledTask;
+Char ledTaskStack[TASK_STACK_SIZE];
 
 /*********************************************************************
  * EXTERNAL VARIABLES
@@ -65,7 +74,7 @@ static color scoreColor = BLUE;
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
-static void RGBLED_StateChangeCB(uint16_t connHandle, uint16_t svcUuid, uint8_t paramID, uint8_t *pValue, uint16_t len);
+//static void RGBLED_StateChangeCB(uint16_t connHandle, uint16_t svcUuid, uint8_t paramID, uint8_t *pValue, uint16_t len);
 
 /*********************************************************************
  * PROFILE CALLBACKS
@@ -74,6 +83,39 @@ static void RGBLED_StateChangeCB(uint16_t connHandle, uint16_t svcUuid, uint8_t 
 /*********************************************************************
  * PUBLIC FUNCTIONS
  */
+
+/*
+ * @brief   Task creation function for the user task.
+ *
+ * @param   None.
+ *
+ * @return  None.
+ */
+void RGBLED_createTask(void)
+{
+  Task_Params taskParams;
+
+  // Configure task
+  Task_Params_init(&taskParams);
+  taskParams.stack = ledTaskStack;
+  taskParams.stackSize = TASK_STACK_SIZE;
+  taskParams.priority = 1;
+
+  Task_construct(&ledTask, RGBLED_taskFxn, &taskParams, NULL);
+}
+
+/*
+ * @brief   Task that retrieves led color values from osal_snv
+ *          and assigns them to local variables
+ *
+ * @param   a0, a1
+ *
+ * @return  None
+ */
+static void RGBLED_taskFxn(UArg a0, UArg a1)
+{
+    RGBLED_initLEDColor();
+}
 
 /*********************************************************************
  * @fn      RGBLED_init
@@ -88,7 +130,7 @@ void RGBLED_init(void)
 {
   // Add RGB LED service
   RGBLED_AddService();
-  RGBLED_Setup(RGBLED_StateChangeCB);
+  RGBLED_initLEDColor();
 
 #if Board_WS2812_NUM_LEDS > 0
   WS2812_init(Board_WS2812_SPI);
@@ -96,6 +138,54 @@ void RGBLED_init(void)
 
   // reset LEDs to black
   RGBLED_reset();
+}
+
+void RGBLED_initLEDColor(void) {
+
+    uint8_t status = SUCCESS;
+
+    status = osal_snv_read(SNV_TIME_COLOR_ID, SNV_BUF_LEN, (char *)buf);
+
+    // color hasn't been saved to snv yet
+    if (status != SUCCESS) {
+        // save time led color for first time
+        snprintf(buf, SNV_BUF_LEN, "%d,%d,%d", timeColor.r, timeColor.g, timeColor.b);
+        status = osal_snv_write(SNV_TIME_COLOR_ID, SNV_BUF_LEN, (char *)buf);
+    } else {
+        getRGBComponents(true);
+    }
+
+    // reset char array for score colors
+    memset(buf, 0, sizeof buf);
+    status = osal_snv_read(SNV_SCORE_COLOR_ID, SNV_BUF_LEN, (char *)buf);
+
+    // color hasn't been saved to snv yet
+    if (status != SUCCESS) {
+        // save score led color for first time
+        snprintf(buf, SNV_BUF_LEN, "%d,%d,%d", scoreColor.r, scoreColor.g, scoreColor.b);
+        status = osal_snv_write(SNV_SCORE_COLOR_ID, SNV_BUF_LEN, (char *)buf);
+    } else {
+        getRGBComponents(false);
+    }
+}
+
+void getRGBComponents(bool isTime) {
+    char *token;
+    char *savePtr;
+    char *rgb[3];
+    uint8_t i = 0;
+
+    token = strtok_r((char *)buf, ",", &savePtr);
+
+    /* walk through other tokens */
+    while(token != NULL) {
+        rgb[i] = token;
+        i++;
+
+        token = strtok_r(NULL, ",", &savePtr);
+    }
+
+    RGBLED_SetLedColor(atoi(rgb[0]), atoi(rgb[1]), atoi(rgb[2]), isTime);
 }
 
 /*********************************************************************
@@ -142,14 +232,14 @@ void RGBLED_reset(void)
  *
  * @return  None.
  */
-static void RGBLED_StateChangeCB(uint16_t connHandle, uint16_t svcUuid,
+/*static void RGBLED_StateChangeCB(uint16_t connHandle, uint16_t svcUuid,
                                                uint8_t paramID, uint8_t *pValue, uint16_t len)
 {
   // Wake up the application thread
   // See the service header file to compare paramID with characteristic.
-  Log_info1("(CB) LED characteristic value change: svc(0x%04x). Sending msg to app.", (IArg)svcUuid);
+  Log_info1("(CB) LED characteristic value change: svc(0x%04x). Sending msg to app.", svcUuid);
   user_service_ValueChangeCB(connHandle, svcUuid, paramID, pValue, len);
-}
+}*/
 
 /*********************************************************************
  * @fn      RGBLED_SetLedColor
@@ -165,42 +255,28 @@ static void RGBLED_StateChangeCB(uint16_t connHandle, uint16_t svcUuid,
  */
 void RGBLED_SetLedColor(uint8_t r, uint8_t g, uint8_t b, bool isTime)
 {
-    uint16_t index = isTime ? 0 : NUM_TIME_LEDS;
-    uint16_t end = isTime ? NUM_TIME_LEDS : NUM_SCORE_LEDS;
+    uint8_t status = SUCCESS;
 
-    for (uint16_t i = index; i < end; i++) {
-        LEDs[i].r = r;
-        LEDs[i].g = g;
-        LEDs[i].b = b;
+    memset(buf, 0, sizeof buf);
+    snprintf(buf, SNV_BUF_LEN, "%d,%d,%d", r, g, b);
+
+    // colors are GRB so need to swap r and g values
+    if (isTime) {
+        timeColor.r = g;
+        timeColor.g = r;
+        timeColor.b = b;
+        status = osal_snv_write(SNV_TIME_COLOR_ID, SNV_BUF_LEN, (char *)buf);
+    } else {
+        scoreColor.r = g;
+        scoreColor.g = r;
+        scoreColor.b = b;
+        status = osal_snv_write(SNV_SCORE_COLOR_ID, SNV_BUF_LEN, (char *)buf);
     }
 
-}
+    if (status != SUCCESS) {
+        Log_info1("snv write fail: %d", status);
+    }
 
-/*********************************************************************
- * @fn      RGBLED_Update
- *
- * @brief   Send color configuration to LEDs.
- *
- * @return  None.
- */
-void RGBLED_Update(void)
-{
-
-#if Board_WS2812_NUM_LEDS > 0
-  uint16_t i = 0, handled = 0;
-  uint32_t sleep = 500 * (1000 / Clock_tickPeriod);
-
-  for (; i - handled < Board_WS2812_NUM_LEDS; i++) {
-      WS2812_setLEDcolor(i - handled, timeColor.r, timeColor.g, timeColor.b, WS2812_REFRESH);
-      Task_sleep(sleep);
-      WS2812_setLEDcolor(i - handled, 0, 0, 0, WS2812_REFRESH);
-      Task_sleep(sleep);
-  }
-//  WS2812_refreshLEDs();
-  handled += Board_WS2812_NUM_LEDS;
-#endif
-
-  RGBLED_SetParameter(RGB_LED_PARAM_COLOR, sizeof(LEDs), LEDs);
 }
 
 void RGBLED_UpdateTimeDigits(uint8_t digit1, uint8_t digit2, uint8_t digit3, uint8_t digit4, uint8_t digit5) {
@@ -237,7 +313,7 @@ void RGBLED_UpdateScoreDigits(uint8_t digit1, uint8_t digit2) {
 
     // testing with launchpad
     if (digit2 > 0 && digit2 <= Board_WS2812_NUM_LEDS) {
-        WS2812_setLEDcolor(digit2 - 1, timeColor.r, timeColor.g, timeColor.b, WS2812_NOREFRESH);
+        WS2812_setLEDcolor(digit2 - 1, scoreColor.r, scoreColor.g, scoreColor.b, WS2812_NOREFRESH);
     }
 
     WS2812_refreshLEDs();

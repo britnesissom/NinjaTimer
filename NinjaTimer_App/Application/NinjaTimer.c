@@ -93,7 +93,7 @@
 #define NT_TASK_PRIORITY                     1
 
 #ifndef NT_TASK_STACK_SIZE
-#define NT_TASK_STACK_SIZE                   800
+#define NT_TASK_STACK_SIZE                   1024
 #endif
 
 // Internal Events for RTOS application
@@ -1001,7 +1001,7 @@ void user_DataService_ValueChangeHandler(char_data_t *pCharData)
           Log_info1("score: %d", score);
           RGBLED_UpdateScoreDigits(score / 10, score % 10);
       }
-      else if (strstr((char *)received_string, "rgb") != NULL) {    // change led colors
+       else if (strstr((char *)received_string, "rgb") != NULL) {    // change led colors
           char *token;
           char *savePtr;
           char *rgb[5];
