@@ -238,7 +238,7 @@ PIN_Config buttonPinTable[] = {
 static Clock_Struct button0DebounceClock;
 
 // Clock instances for internal periodic events.
-static Clock_Handle periodicClock;
+static Clock_Struct periodicClock;
 
 // keep track of clock time for stop then start
 unsigned long currentTime = 0;
@@ -282,7 +282,6 @@ static void user_handleButtonPress(button_state_t *pState);
 
 static void NinjaTimer_clockPerformTask(void);
 static void NinjaTimer_timerClockHandler(UArg arg);
-static void createClockIfNull(void);
 
 // Generic callback handler for value changes in services.
 static void user_service_CfgChangeCB( uint16_t connHandle, uint16_t svcUuid, uint8_t paramID, uint8_t *pValue, uint16_t len );
@@ -492,7 +491,7 @@ static void NinjaTimer_init(void)
   clockParams.period = TIMER_PERIOD * (1000/Clock_tickPeriod);
 
   // Create periodic clock for displaying timer LEDs
-  periodicClock = Clock_create(NinjaTimer_timerClockHandler, 10, &clockParams, NULL);
+  Clock_construct(&periodicClock, NinjaTimer_timerClockHandler, 10, &clockParams);
 
   // ******************************************************************
   // BLE Stack initialization
@@ -882,13 +881,11 @@ static void user_handleButtonPress(button_state_t *pState)
   // button just pressed and released
   if (pState->state) {
       // clock isn't started so start timer
-      if (!Clock_isActive(periodicClock)) {
-//          createClockIfNull();
-          Clock_start(periodicClock);
+      if (!Clock_isActive(Clock_handle(&periodicClock))) {
+          Clock_start(Clock_handle(&periodicClock));
       } else {
           // clock already running so stop timer
-          Clock_stop(periodicClock);
-//          Clock_delete(&periodicClock);
+          Clock_stop(Clock_handle(&periodicClock));
       }
   }
 
@@ -985,11 +982,10 @@ void user_DataService_ValueChangeHandler(char_data_t *pCharData)
                 (IArg)received_string);
 
       if (strcmp((char *)received_string, "s") == 0) {   // start timer
-//          createClockIfNull();
-          Clock_start(periodicClock);
+          Clock_start(Clock_handle(&periodicClock));
       }
       else if (strcmp((char *)received_string, "p") == 0) {    // stop timer
-          Clock_stop(periodicClock);
+          Clock_stop(Clock_handle(&periodicClock));
       }
       else if (strcmp((char *)received_string, "r") == 0) {    // reset timer
           score = 0;
@@ -998,7 +994,6 @@ void user_DataService_ValueChangeHandler(char_data_t *pCharData)
       }
       else if (strcmp((char *)received_string, "c") == 0) {    // add 1 to score
           score++;
-          Log_info1("score: %d", score);
           RGBLED_UpdateScoreDigits(score / 10, score % 10);
       }
        else if (strstr((char *)received_string, "rgb") != NULL) {    // change led colors
@@ -1028,21 +1023,6 @@ void user_DataService_ValueChangeHandler(char_data_t *pCharData)
   default:
     return;
   }
-}
-
-// creates clock if it hasn't already been created or was previously deleted
-static void createClockIfNull(void) {
-    if(!Util_clockIsCreated(&periodicClock)) {
-        Clock_Params clockParams;
-        Clock_Params_init(&clockParams);
-
-        clockParams.arg = NT_PERIODIC_EVT;
-        clockParams.startFlag = false;
-        clockParams.period = TIMER_PERIOD * (1000/Clock_tickPeriod);
-
-        // Create periodic clock for timer LEDs to update every 100ms
-        periodicClock = Clock_create(NinjaTimer_timerClockHandler, 10, &clockParams, NULL);
-    }
 }
 
 /*

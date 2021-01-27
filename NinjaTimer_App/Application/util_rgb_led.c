@@ -3,6 +3,7 @@
  */
 #include <uartlog/UartLog.h>
 #include <ti/sysbios/knl/Task.h>
+#include <xdc/runtime/System.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -149,7 +150,7 @@ void RGBLED_initLEDColor(void) {
     // color hasn't been saved to snv yet
     if (status != SUCCESS) {
         // save time led color for first time
-        snprintf(buf, SNV_BUF_LEN, "%d,%d,%d", timeColor.r, timeColor.g, timeColor.b);
+        System_snprintf(buf, SNV_BUF_LEN, "%d,%d,%d", timeColor.r, timeColor.g, timeColor.b);
         status = osal_snv_write(SNV_TIME_COLOR_ID, SNV_BUF_LEN, (char *)buf);
     } else {
         getRGBComponents(true);
@@ -162,7 +163,7 @@ void RGBLED_initLEDColor(void) {
     // color hasn't been saved to snv yet
     if (status != SUCCESS) {
         // save score led color for first time
-        snprintf(buf, SNV_BUF_LEN, "%d,%d,%d", scoreColor.r, scoreColor.g, scoreColor.b);
+        System_snprintf(buf, SNV_BUF_LEN, "%d,%d,%d", scoreColor.r, scoreColor.g, scoreColor.b);
         status = osal_snv_write(SNV_SCORE_COLOR_ID, SNV_BUF_LEN, (char *)buf);
     } else {
         getRGBComponents(false);
@@ -258,7 +259,7 @@ void RGBLED_SetLedColor(uint8_t r, uint8_t g, uint8_t b, bool isTime)
     uint8_t status = SUCCESS;
 
     memset(buf, 0, sizeof buf);
-    snprintf(buf, SNV_BUF_LEN, "%d,%d,%d", r, g, b);
+    System_snprintf(buf, SNV_BUF_LEN, "%d,%d,%d", r, g, b);
 
     // colors are GRB so need to swap r and g values
     if (isTime) {
@@ -276,6 +277,15 @@ void RGBLED_SetLedColor(uint8_t r, uint8_t g, uint8_t b, bool isTime)
     if (status != SUCCESS) {
         Log_info1("snv write fail: %d", status);
     }
+
+    uint16_t index = isTime ? 0 : NUM_TIME_LEDS;
+    uint16_t end = isTime ? NUM_TIME_LEDS : NUM_SCORE_LEDS;
+
+    for (uint16_t i = index; i < end; i++) {
+        WS2812_setLEDcolor(index, g, r, b, WS2812_NOREFRESH);
+    }
+
+    WS2812_refreshLEDs();
 
 }
 

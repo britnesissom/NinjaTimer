@@ -153,11 +153,6 @@
 			<locationURI>SRC_BLE_DIR/osal/src/inc/osal_snv.h</locationURI>
 		</link>
 		<link>
-			<name>PROFILES/ext_flash_layout.h</name>
-			<type>1</type>
-			<locationURI>SRC_BLE_DIR/common/cc26xx/ext_flash_layout.h</locationURI>
-		</link>
-		<link>
 			<name>PROFILES/gatt_profile_uuid.h</name>
 			<type>1</type>
 			<locationURI>SRC_BLE_DIR/inc/gatt_profile_uuid.h</locationURI>
